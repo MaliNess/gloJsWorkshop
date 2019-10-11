@@ -86,15 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    //modal
-    {
-        document.body.insertAdjacentHTML('beforeend', `
-                                                <div class="youTuberModal" style="opacity: 0;">
-                                                    <div id="youtuberClose">&#215;</div>
-                                                    <div id="youtuberContainer"></div>
-                                                </div>
-                                                `);
-
+    const youtuber = () => {
         const youTuberItems = document.querySelectorAll('[data-youtuber]');
         const youTuberModal = document.querySelector('.youTuberModal');
         const youTuberContainer = document.getElementById('youtuberContainer');
@@ -103,8 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const qh = [2160, 1440, 1080, 720, 480, 360, 240, 144];
 
         const sizeVideo = () => {
-            let ww = document.documentElement.clientWidth;
-            let wh = document.documentElement.clientHeight;
+            const ww = document.documentElement.clientWidth;
+            const wh = document.documentElement.clientHeight;
 
             for (let i = 0; i < qw.length; i++) {
                 if (ww > qw[i]) {
@@ -128,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const idVideo = elem.dataset.youtuber;
                 youTuberModal.style.display = 'block';
 
-                window.setTimeout(function() {
+                window.setTimeout(function () {
                     youTuberModal.style.opacity = 1;
                     youTuberModal.style.transition = '0.3s linear opacity';
                 }, 0);
@@ -154,10 +146,141 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.removeEventListener('resize', sizeVideo);
             }, 700);
         });
+    };
+
+    //modal
+    {
+        document.body.insertAdjacentHTML('beforeend', `
+                                                <div class="youTuberModal" style="opacity: 0;">
+                                                    <div id="youtuberClose">&#215;</div>
+                                                    <div id="youtuberContainer"></div>
+                                                </div>
+                                                `);
+        youtuber();
     }
 
-    //youtube
+    //API
     {
         const API_KEY = 'key';
+        const CLIENT_ID = 'clientId';
+
+        //auth
+        {
+            const buttonAuth = document.getElementById('authorize');
+            const blockAuth = document.querySelector('.auth');
+
+            const errorAuth = err => {
+                console.error(err);
+                blockAuth.style.display = '';
+            };
+
+            gapi.load("client:auth2", () => gapi.auth2.init({client_id: CLIENT_ID}));
+
+            const authenticate = () => gapi.auth2.getAuthInstance()
+                .signIn({scope: 'https://www.googleapis.com/auth/youtube.readonly'})
+                .then(() => console.log('Sing-in successful'))
+                .catch(errorAuth);
+
+            const loadClient = () => {
+                gapi.client.setApiKey(API_KEY);
+                return gapi.client.load('https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest')
+                    .then(() => console.log('GAPI client loaded for API'))
+                    .then(() => blockAuth.style.display = 'none')
+                    .catch(errorAuth);
+            };
+
+            buttonAuth.addEventListener('click', () => authenticate().then(loadClient));
+        }
+
+        //request
+        {
+            const gloTube = document.querySelector('.logo-academy');
+            const trends = document.getElementById('yt_trend');
+            const like = document.getElementById('like');
+            const main = document.getElementById('yt_main');
+
+            const request = options => gapi.client.youtube[options.method]
+                .list(options)
+                .then(response => response.result.items)
+                .then(render)
+                .then(youtuber)
+                .catch(err => console.error("Request error: " + err));
+
+            const render = data => {
+                console.log(data);
+                const ytWrapper = document.getElementById('yt-wrapper');
+                ytWrapper.textContent = '';
+                data.forEach(item => {
+                    try {
+                        const {
+                            id, id: {videoId}, //JSON field: {new variable with field content}
+                            snippet: {
+                                channelTitle,
+                                title,
+                                resourceId: {
+                                    videoId: likedVideoId
+                                } = {},
+                                thumbnails: {high: {url}}
+                            }
+                        } = item;
+                        ytWrapper.innerHTML += `
+                        <div class="yt" data-youtuber="${likedVideoId || videoId || id}">
+                            <div class="yt-thumbnail" style="--aspect-ratio:16/9;">
+                                <img src="${url}" alt="thumbnail" class="yt-thumbnail__img">
+                            </div>
+                            <div class="yt-title">${title}</div>
+                            <div class="yt-channel">${channelTitle}</div>
+                        </div>
+                    `;
+                    } catch (err) {
+                        console.error(err);
+                    }
+                });
+            };
+
+            //videos from specified channel with id {channelId}
+            gloTube.addEventListener('click', () => {
+                request({
+                    method: 'search',
+                    part: 'snippet',
+                    channelId: 'UCVswRUcKC-M35RzgPRv8qUg',
+                    order: 'date',
+                    maxResults: 6,
+                });
+            });
+
+            //most popular videos (trends) in region {regionCode}
+            trends.addEventListener('click', () => {
+                request({
+                    method: 'videos',
+                    part: 'snippet',
+                    chart: 'mostPopular',
+                    maxResults: 6,
+                    regionCode: 'RU',
+                });
+            });
+
+            //videos from playlist with id {playlistId}
+            like.addEventListener('click', () => {
+                request({
+                    method: 'playlistItems',
+                    part: 'snippet',
+                    playlistId: 'LL84qG9izkzQEauvC23fDEFg',
+                    maxResults: 6,
+                });
+            });
+
+            //search videos by string 'cute animals'
+            main.addEventListener('click', () => {
+                request({
+                    method: 'search',
+                    part: 'snippet',
+                    type: 'video',
+                    order: 'rating',
+                    q: 'cute animals',
+                    maxResults: 6,
+                });
+            });
+        }
     }
 });
